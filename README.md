@@ -32,7 +32,7 @@ CoreaLoader est un bootloader expérimental multi-étapes conçu pour faire pass
 | Matériel Physique               | ⚠️ Non testé   | La compatibilité réelle dépend des appels BIOS et du chipset utilisé. |
 | Mode Long 64-bit                | ✅ Atteint     | Transition complète jusqu’au mode d’exécution 64-bit.                 |
 
-## 🛠️ Build and Run
+## 🛠️ Run
 
 Pour exécuter CoreaLoader, vous aurez besoin de :
 
