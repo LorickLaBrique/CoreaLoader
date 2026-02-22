@@ -1,47 +1,51 @@
 <!-- ==============================================================================
 
-  Name:         First Stage Boot Sector (MBR/VBR)
-  File:         bootloader.asm
+  Name:         README file
+  File:         README.md
   Author:       @lorick_la_brique
-  Date:         02 November 2025 - Revision 1
-  Description:  16-bit code loaded at 0x7C00. Initializes segments, prints a 
-                message, loads the Second Stage (starting at sector 2) into 
-                memory address 0x8000, and jumps to it.
+  Date:         22 February 2026 - Revision 2
+  Description:  Comprehensive guide for the CoreaLoader project, covering
+                architecture, memory layout, and build instructions. 
  
 ============================================================================== -->
-# 🚀 CoreaLoader: From 16-bit BIOS to 64-bit Long Mode
 
-CoreaLoader est un bootloader expérimental multi-étapes conçu pour faire passer un système x86 du mode réel 16 bits (BIOS) directement au mode long 64 bits (x86_64). Il agit comme un bootstrap minimal pour le noyau, gérant des étapes cruciales telles que :
+# 🚀 CoreaLoader: The x86_64 Gateway
 
-- Activation de la porte A20  
-- Chargement de la Global Descriptor Table (GDT)  
-- Passage au mode protégé  
-- Configuration de la pagination  
-- Saut final vers l'exécution en 64 bits  
+**CoreaLoader** est un chargeur d'amorçage (bootloader) multi-étapes sophistiqué conçu pour propulser un processeur de l'état **Real Mode 16 bits** vers le **Long Mode 64 bits** natif. Il élimine la complexité de l'initialisation matérielle pour permettre au noyau de démarrer directement dans l'environnement le plus performant.
 
----
 
-## 🧪 Compatibilité Plateforme
 
-| Plateforme / Fonctionnalité      | Statut        | Détails                                                                 |
-|----------------------------------|---------------|-------------------------------------------------------------------------|
-| Architecture x86_64              | ✅ Requise     | CoreaLoader cible exclusivement les systèmes x86_64.                   |
-| BIOS (Legacy Boot)              | ✅ Fonctionnel | Démarre depuis l'adresse classique 0x7C00 via BIOS.                    |
-| UEFI Boot                        | ❌ Non supporté| Nécessite une implémentation distincte au format PE 64-bit.           |
-| Virtualisation (QEMU)           | ✅ Testé       | Fonctionne correctement avec `qemu-system-x86_64`.                     |
-| Matériel Physique               | ⚠️ Non testé   | La compatibilité réelle dépend des appels BIOS et du chipset utilisé. |
-| Mode Long 64-bit                | ✅ Atteint     | Transition complète jusqu’au mode d’exécution 64-bit.                 |
+## 🛠️ Architecture du Pipeline
+Le loader est divisé en deux étapes critiques pour maximiser l'espace et la compatibilité :
 
-## 🛠️ Run
+1. **Stage 1 (MBR) :** Logé dans le premier secteur (512 octets). Il réveille le BIOS, identifie le disque de démarrage et charge le Stage 2 à l'adresse `0x8000`.
+2. **Stage 2 (Transition) :** Le "cerveau" du loader. 
+    - **Memory Mapping :** Interroge le BIOS (E820) pour cartographier la RAM disponible.
+    - **A20 Gate :** Déverrouille l'accès à la mémoire étendue.
+    - **Paging 4-Levels :** Construit les tables PML4, PDPT, PD et PT avec un alignement strict de 4 Ko.
+    - **GDT 64-bit :** Définit les descripteurs de segments pour le mode Long.
 
-Pour exécuter CoreaLoader, vous aurez besoin de :
+## 📊 État de la Mémoire (Memory Layout)
+Le respect de cet alignement est crucial pour éviter les Triple Faults.
 
-- QEMU (Quick Emulator)
+| Adresse | Usage |
+| :--- | :--- |
+| **`0x7C00`** | Point d'entrée BIOS (Stage 1) |
+| **`0x8000`** | Exécution du Stage 2 |
+| **`0x9000`** | Stockage de la Memory Map (E820) |
+| **`0x10000`**| **Root Page Table (PML4) - Alignée 4KB** |
+| **`0x90000`**| Stack (Pile) 64 bits |
 
-## ⚖️ Licence CoreaLoader
 
-Ce projet est publié sous une **Licence Restreinte**.
 
-* ✅ **Modification :** Vous êtes autorisé à modifier le code source pour votre **usage personnel et interne** uniquement.
-* ❌ **Redistribution :** Il est **strictement interdit** de redistribuer le code source original ou toute version modifiée, que ce soit sous le nom "CoreaLoader" ou tout autre nom, à des tiers.
-* ©️ Le code source reste la **propriété intellectuelle exclusive** des auteurs de CoreaLoader.
+## 🚀 Démarrage Rapide
+
+### Prérequis
+- **NASM** (Assembler)
+- **QEMU** (Émulateur x86_64)
+- **GNU Make** & **dd** (Build tools)
+
+### Build & Run
+```bash
+make       # Génère build/corealoader.img
+make run   # Lance l'émulation avec moniteur debug

@@ -1,57 +1,78 @@
-; ==============================================================================
+; -----------------------------------------------------------------------------
 ;
-; Name:         First Stage Boot Sector (MBR/VBR)
+; Project:      CoreaLoader
+; Name:         First Stage Boot Sector (MBR)
 ; File:         bootloader.asm
 ; Author:       @lorick_la_brique
-; Date:         02 November 2025 - Revision 1
-; Description:  16-bit code loaded at 0x7C00. Initializes segments, prints a 
-;               message, loads the Second Stage (starting at sector 2) into 
-;               memory address 0x8000, and jumps to it.
+; Date:         22 February 2026 - Revision 2
+; Description:  Loads the rest of the OS from disk. Optimized to use the 
+;               boot drive ID provided by the BIOS and load more sectors.
 ;
-; ==============================================================================
+; -----------------------------------------------------------------------------
 
 [bits 16]
-org 0x7C00                      ; Tells NASM that the code will be loaded at 0x7C00
+org 0x7C00                      ; MBR starts at 0x7C00
 
 start:
-    cli                         ; Disable interrupts (important before segment manipulation)
-    xor ax, ax
-    mov ds, ax                  ; Set data segment (DS) to 0
-    mov es, ax                  ; Set extra segment (ES) to 0
-    mov ss, ax                  ; Set stack segment (SS) to 0
-    mov sp, 0x7C00              ; Set stack pointer (SP) right below the code
+    jmp 0:init_segments          ; Far jump to fix CS to 0
 
-; Print MBR message to the screen using BIOS INT 0x10
-    mov si, msg                 ; SI points to the start of the message string
-.print_char:
-    lodsb                       ; Load AL with byte pointed to by SI, and increment SI
-    cmp al, 0
-    je .done_msg                ; If AL is null terminator (0), exit loop
-    mov ah, 0x0E                ; BIOS Teletype function
-    int 0x10                    ; Call BIOS to print the character
-    jmp .print_char
-.done_msg:
+init_segments:
+    cli                         ; Disable interrupts during setup
+    mov [BOOT_DRIVE], dl        ; Save boot drive ID (passed by BIOS in DL)
+    
+    xor ax, ax                  ; AX = 0
+    mov ds, ax                  ; Set data segment
+    mov es, ax                  ; Set extra segment
+    mov ss, ax                  ; Set stack segment
+    mov sp, 0x7C00              ; Stack grows downwards from 0x7C00
+    sti                         ; Re-enable interrupts for BIOS calls
 
-; Load second stage (Stage 2) into memory using BIOS INT 0x13
-; 
-    mov bx, 0x8000              ; Destination buffer address (ES:BX = 0x0000:0x8000)
-    mov ah, 0x02                ; Function: Read Sector(s) from Drive
-    mov al, 40                  ; Number of sectors to read (40 sectors = 20 KB)
-    mov ch, 0                   ; Cylinder (Track) 0
-    mov cl, 2                   ; Starting Sector (Sector 1 is the MBR, so start at Sector 2)
+    ; Print greeting
+    mov si, msg_boot
+    call print_string_16
+
+    ; Load Stage 2 + Kernel
+    ; We load from Sector 2 (where stage 2 starts) to 0x8000
+    mov ax, 0x0800              ; ES:BX = 0x0000:0x8000 (via AX)
+    mov es, ax
+    xor bx, bx
+    
+    mov ah, 0x02                ; BIOS read sectors function
+    mov al, 64                  ; Number of sectors to read (32KB - enough for now)
+    mov ch, 0                   ; Cylinder 0
     mov dh, 0                   ; Head 0
-    mov dl, 0x80                ; Drive Number: 0x00=Floppy A:, 0x80=First Hard Disk
-    int 0x13
-    jc disk_error               ; Jump if carry flag (CF) is set (read error)
+    mov cl, 2                   ; Start from Sector 2
+    mov dl, [BOOT_DRIVE]        ; Use the saved boot drive
+    int 0x13                    ; Call BIOS
+    jc disk_error               ; Jump if carry flag (error)
 
-    ; Jump to the loaded second stage code
-    jmp 0x0000:0x8000           ; Far jump to 0x8000 (CS:IP)
+    ; Jump to Stage 2
+    mov si, msg_jump
+    call print_string_16
+    jmp 0:0x8000                ; Transfer control to second_stage.asm
 
 disk_error:
-    ; Simple error handling: halt and loop forever
+    mov si, msg_error
+    call print_string_16
     hlt
-    jmp disk_error
+    jmp $
 
-msg db "Booting NexoraOS !",0x0D,0x0A,0
-times 510-($-$$) db 0           ; Pad the boot sector up to byte 510
-dw 0xAA55                       ; Boot signature at bytes 510 and 511
+; --- Helper: Print String ---
+print_string_16:
+    lodsb
+    or al, al
+    jz .done
+    mov ah, 0x0E
+    int 0x10
+    jmp print_string_16
+.done:
+    ret
+
+; --- Data ---
+BOOT_DRIVE db 0
+msg_boot   db "Nexora MBR Loading...", 0x0D, 0x0A, 0
+msg_jump   db "Jumping to Stage 2...", 0x0D, 0x0A, 0
+msg_error  db "Disk Error!", 0
+
+times 510-($-$$) db 0           ; Padding to 510 bytes
+dw 0xAA55                       ; Boot signature
